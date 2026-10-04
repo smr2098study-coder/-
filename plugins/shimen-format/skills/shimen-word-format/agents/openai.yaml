@@ -1,0 +1,6 @@
+interface:
+  display_name: "师门 Word 格式"
+  short_description: "按师门规范生成和检查 Word，统一标题、字体、表图及分页设置"
+  default_prompt: "请使用 $shimen-word-format 按师门规范生成 Word，并检查段前黑点、分页和表图格式。"
+policy:
+  allow_implicit_invocation: true

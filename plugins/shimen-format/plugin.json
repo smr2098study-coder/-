@@ -1,0 +1,15 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "shimen-format",
+  "version": "1.0.0",
+  "description": "按师门规范生成与检查 Word 和 PPT，处理字体、标题、表图及分页问题。",
+  "extensions": {
+    "com.openai": {
+      "interface": {
+        "displayName": "师门 Word 与 PPT 格式",
+        "shortDescription": "统一师门文档格式并检查 Word 段前黑点与分页问题",
+        "category": "Productivity"
+      }
+    }
+  }
+}
