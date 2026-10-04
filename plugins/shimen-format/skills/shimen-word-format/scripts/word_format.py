@@ -4,6 +4,7 @@ from collections import Counter
 import json
 from pathlib import Path
 import re
+from tempfile import TemporaryDirectory
 from zipfile import ZipFile, ZIP_DEFLATED
 from lxml import etree as E
 
@@ -23,6 +24,28 @@ PROFILES = {
 PATTERNS = [r'^[一二三四五六七八九十百零]+、', r'^（[一二三四五六七八九十百零]+）',
             r'^\d+、', r'^（\d+）', r'^[①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳]']
 FLAGS = ('keepNext', 'keepLines', 'pageBreakBefore')
+CONTROL_PROPERTIES = FLAGS + ('numPr',)
+
+
+def list_style_name(name):
+    value = re.sub(r'[\s_-]', '', name).lower()
+    return bool(re.fullmatch(r'list(?:bullet|number|paragraph|continue)?\d*', value)
+                or re.match(r'^(列表|项目符号|编号列表)', value))
+
+
+def literal_bullet(text):
+    return text.lstrip().startswith(('•', '●', '▪', '■', '·')) or bool(re.match(r'^\s*[-*]\s+', text))
+
+
+def strip_control_properties(root):
+    count = Counter()
+    for pp in root.findall('.//w:pPr', NS):
+        for child in list(pp):
+            name = E.QName(child).localname
+            if name in CONTROL_PROPERTIES:
+                pp.remove(child)
+                count[name] += 1
+    return count
 P_ORDER = ('pStyle keepNext keepLines pageBreakBefore framePr widowControl numPr suppressLineNumbers '
            'pBdr shd tabs suppressAutoHyphens kinsoku wordWrap overflowPunct topLinePunct autoSpaceDE '
            'autoSpaceDN bidi adjustRightInd snapToGrid spacing ind contextualSpacing mirrorIndents '
@@ -227,9 +250,42 @@ class Package:
                 z.writestr(name, value)
 
 
-def audit(path):
+def format_audit(path):
+    """Strict control-property audit across stories, defaults, and styles."""
     pkg = Package(path)
-    issues, stats = [], Counter()
+    issues, counts = [], Counter()
+    for part, data in pkg.parts.items():
+        if not part.startswith('word/') or not part.endswith('.xml'):
+            continue
+        root = E.fromstring(data)
+        for index, p in enumerate(root.findall('.//w:p', NS)):
+            text = ''.join(p.xpath('.//w:t/text()', namespaces=NS))
+            if pkg.role(p) == 'body' and literal_bullet(text):
+                issues.append({'part': part, 'paragraph': index, 'code': 'literal_bullet', 'severity': 'error',
+                               'message': '正文存在文字项目符号；核对用途，纯格式清理不能擅自删字'})
+        for pp in root.findall('.//w:pPr', NS):
+            for child in pp:
+                name = E.QName(child).localname
+                if name in CONTROL_PROPERTIES:
+                    counts[name] += 1
+                    issues.append({'part': part, 'code': name, 'severity': 'error',
+                                   'message': '严格清理要求中不能保留该段落属性，包括val=0节点'})
+        for style in root.findall('.//w:style', NS):
+            name = style.find('w:name', NS)
+            if style.get(tag('type')) == 'paragraph' and name is not None and list_style_name(name.get(tag('val'), '')):
+                issues.append({'part': part, 'code': 'list_style', 'severity': 'error',
+                               'message': '存在列表段落样式，需转换为无编号的普通段落样式'})
+    return {'scope': '全Word XML部件的分页/编号属性检查，不验证视觉布局或文本语义',
+            'counts': {key: counts[key] for key in CONTROL_PROPERTIES},
+            'errors': len(issues), 'warnings': 0, 'issues': issues}
+
+
+def audit(path, format_only=False):
+    hygiene = format_audit(path)
+    if format_only:
+        return hygiene
+    pkg = Package(path)
+    issues, stats = list(hygiene['issues']), Counter()
     def add(index, code, message, severity='error'):
         issues.append({'paragraph': index, 'code': code, 'severity': severity, 'message': message})
     for index, p in enumerate(pkg.paragraphs):
@@ -239,14 +295,13 @@ def audit(path):
         for flag in FLAGS:
             if enabled(pkg.value(p, flag)):
                 stats['effective_' + flag] += 1
-                if role == 'body':
-                    add(index, 'body_pagination', flag + '作用于正文候选，需确认是否是未建样式的小标题', 'warning')
+                add(index, 'paragraph_pagination', flag + '在标题或正文中仍生效')
         numfmt = pkg.number_format(p)
         if numfmt:
             stats['numbered_paragraphs'] += 1
-            add(index, 'list', '列表格式为' + numfmt + '，确认是否是用户要求的列表', 'warning')
+            add(index, 'list', '列表格式为' + numfmt + '，需按文字编号要求处理')
         if text.startswith(('•', '●', '▪', '■', '·')):
-            add(index, 'literal_bullet', '段首实际黑点字符，需判断是否误加', 'warning')
+            add(index, 'literal_bullet', '段首实际黑点字符，纯格式清理不得擅自删文字', 'warning')
         if re.match(r'^#{1,6}\s', text) or '**' in text:
             add(index, 'markdown', '疑似Markdown残留', 'warning')
         if '【写作方向】' in text or '【建议字数】' in text:
@@ -336,9 +391,9 @@ def style_profile(style, role):
     sub(ppr, 'spacing', line=line, lineRule='auto', before='120' if role.startswith('h') else '0', after='0')
     sub(ppr, 'snapToGrid', val='0')
     sub(ppr, 'widowControl', val='1')
-    sub(ppr, 'keepNext', val='1' if role.startswith('h') else '0')
-    sub(ppr, 'keepLines', val='1' if role.startswith('h') or role == 'title' else '0')
-    sub(ppr, 'pageBreakBefore', val='0')
+    for child in list(ppr):
+        if E.QName(child).localname in CONTROL_PROPERTIES:
+            ppr.remove(child)
     sub(ppr, 'jc', val='center' if role in ('title', 'caption') else 'both' if role == 'body' else 'left')
     if role.startswith('h'):
         sub(ppr, 'outlineLvl', val=int(role[1]) - 1)
@@ -373,15 +428,18 @@ def build(source, target):
                 raise ValueError('标题级别必须在1到5之间')
             doc.add_paragraph(block['text'], 'Heading ' + str(level))
         elif kind == 'paragraph':
+            if literal_bullet(block['text']):
+                raise ValueError('新建正文不得使用项目符号或无序列表；请使用普通段落文本')
             doc.add_paragraph(block['text'], 'Normal')
+        elif kind == 'page_break':
+            doc.add_page_break()
         elif kind == 'table':
             rows = block['rows']
             if not rows or not rows[0] or any(len(r) != len(rows[0]) for r in rows):
                 raise ValueError('表格行不能为空且列数必须一致')
             if not block.get('caption'):
                 raise ValueError('表格必须提供caption')
-            caption = doc.add_paragraph(block['caption'], 'Caption')
-            caption.paragraph_format.keep_with_next = True
+            doc.add_paragraph(block['caption'], 'Caption')
             table = doc.add_table(rows=len(rows), cols=len(rows[0]))
             table.style = 'Table Grid'
             table.alignment = WD_TABLE_ALIGNMENT.CENTER
@@ -400,7 +458,6 @@ def build(source, target):
             p.paragraph_format.alignment = 1
             p.paragraph_format.first_line_indent = Cm(0)
             sub(p._p.get_or_add_pPr(), 'ind', firstLineChars=0, firstLine=0)
-            p.paragraph_format.keep_with_next = True
             p.add_run().add_picture(str(source.parent / block['path']), width=Cm(width))
             doc.add_paragraph(block['caption'], 'Caption')
         else:
@@ -408,56 +465,111 @@ def build(source, target):
     target = no_overwrite(source, target)
     canonical_properties(doc.element)
     canonical_properties(doc.styles.element)
-    doc.save(target)
+    # python-docx templates also contain stylesWithEffects.xml, which is not
+    # exposed by Document.styles. Run the package-wide cleaner before delivery.
+    with TemporaryDirectory(prefix='shimen-build-') as temporary:
+        intermediate = Path(temporary) / 'draft.docx'
+        doc.save(intermediate)
+        clean_format(intermediate, target)
 
 
-def repair(source, target, indices_path=None):
+def normalize_list_styles(styles, roots):
+    """Rename de-numbered list styles, preserving all unrelated style properties."""
+    existing = {s.get(tag('styleId')) for s in styles.findall('w:style', NS)}
+    mapping = {}
+    for style in styles.findall('w:style', NS):
+        name = style.find('w:name', NS)
+        if style.get(tag('type')) != 'paragraph' or name is None or not list_style_name(name.get(tag('val'), '')):
+            continue
+        old = style.get(tag('styleId'))
+        new = 'ShimenPlain' + str(len(mapping) + 1)
+        while new in existing:
+            new += 'X'
+        existing.add(new)
+        mapping[old] = new
+        style.set(tag('styleId'), new)
+        name.set(tag('val'), 'Shimen Plain Paragraph ' + str(len(mapping)))
+    for root in roots:
+        for node in root.iter():
+            if node.tag in {tag(x) for x in ('pStyle', 'basedOn', 'next', 'link', 'styleLink', 'numStyleLink')}:
+                old = node.get(tag('val'))
+                if old in mapping:
+                    node.set(tag('val'), mapping[old])
+    return mapping
+
+
+def clean_format(source, target):
+    """Clear control properties without rebuilding text, tables, fields, or media."""
     pkg = Package(source)
     target = no_overwrite(source, target)
-    if indices_path:
-        indices = json.loads(Path(indices_path).read_text(encoding='utf-8'))
-        if not isinstance(indices, list) or any(not isinstance(x, int) or x < 0 or x >= len(pkg.paragraphs) for x in indices):
-            raise ValueError('paragraphs必须是有效段落索引数组')
-    else:
-        indices = [i for i, p in enumerate(pkg.paragraphs) if pkg.role(p) == 'body'
-                   and not p.xpath('.//w:fldChar|.//w:instrText|.//w:hyperlink|.//w:drawing|.//w:pict', namespaces=NS)]
-    for i in indices:
-        p = pkg.paragraphs[i]
-        if pkg.role(p) in ('table', 'toc', 'image', 'empty', 'title', 'caption') or pkg.role(p).startswith('h'):
-            raise ValueError('索引指向受保护角色: ' + str(i))
-        pp = p.find('w:pPr', NS)
-        if pp is None:
-            pp = E.Element(tag('pPr'))
-            p.insert(0, pp)
-        for flag in FLAGS:
-            # Write false rather than delete, so style inheritance cannot restore true.
-            sub(pp, flag, val='0')
-        canonical_properties(pp)
-    pkg.save(target)
-    return {'candidate_paragraphs_processed': len(indices), 'scope': '仅正文分页标志，未统一其他格式'}
+    roots = {}
+    for part, data in pkg.parts.items():
+        if part.startswith('word/') and part.endswith('.xml'):
+            roots[part] = E.fromstring(data)
+    # Numeric labels are visible content: do not silently delete auto-numbered
+    # headings or references. Convert them to verified literal labels first.
+    for part, root in roots.items():
+        for index, p in enumerate(root.findall('.//w:p', NS)):
+            numfmt = pkg.number_format(p)
+            text = ''.join(p.xpath('.//w:t/text()', namespaces=NS)).strip()
+            if pkg.role(p) == 'body' and literal_bullet(text):
+                raise ValueError('段首文字符号属于内容，先核对其用途，不能在纯格式清理时擅自删字: '
+                                 + part + ' paragraph ' + str(index))
+            if numfmt not in (None, 'bullet', 'none'):
+                raise ValueError('先将可见自动编号准确转换为普通文字以保留标题/参考文献: '
+                                 + part + ' paragraph ' + str(index))
+    snapshots = {part: E.tostring(root) for part, root in roots.items()}
+    removed = Counter()
+    for root in roots.values():
+        removed.update(strip_control_properties(root))
+    mapping = normalize_list_styles(roots['word/styles.xml'], list(roots.values()))
+    # Shadow style parts, if present, must use the same renamed identifiers.
+    for part, root in roots.items():
+        if part != 'word/styles.xml':
+            for s in root.findall('.//w:style', NS):
+                old = s.get(tag('styleId'))
+                if old in mapping:
+                    s.set(tag('styleId'), mapping[old])
+                    name = s.find('w:name', NS)
+                    if name is not None:
+                        name.set(tag('val'), 'Shimen Plain Paragraph ' + str(list(mapping).index(old) + 1))
+    changed = []
+    for part, root in roots.items():
+        if E.tostring(root) != snapshots[part]:
+            pkg.parts[part] = E.tostring(root, encoding='UTF-8', xml_declaration=True, standalone=True)
+            changed.append(part)
+    with ZipFile(target, 'w', ZIP_DEFLATED) as z:
+        for part, data in pkg.parts.items():
+            z.writestr(part, data)
+    verification = format_audit(target)
+    if verification['errors']:
+        raise ValueError('格式清理后检查未通过，请查看输出并修复')
+    return {'removed': {name: removed[name] for name in CONTROL_PROPERTIES},
+            'renamed_list_styles': len(mapping), 'changed_parts': changed,
+            'verification': verification['counts'], 'scope': '仅分页/编号及列表样式，保留文字内容和其他格式'}
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest='command', required=True)
-    for command in ('build', 'audit', 'repair-body-flags'):
+    for command in ('build', 'audit', 'clean-format'):
         p = commands.add_parser(command)
         p.add_argument('input')
         p.add_argument('--out', required=True)
-        if command == 'repair-body-flags':
-            p.add_argument('--paragraphs')
+        if command == 'audit':
+            p.add_argument('--format-only', action='store_true')
     args = parser.parse_args()
     if args.command == 'build':
         build(args.input, args.out)
         print('Created:', args.out)
     elif args.command == 'audit':
-        result = audit(args.input)
+        result = audit(args.input, args.format_only)
         target = no_overwrite(args.input, args.out)
         target.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding='utf-8')
         print(json.dumps({k: v for k, v in result.items() if k != 'issues'}, ensure_ascii=False))
         raise SystemExit(1 if result['errors'] else 0)
     else:
-        print(json.dumps(repair(args.input, args.out, args.paragraphs), ensure_ascii=False))
+        print(json.dumps(clean_format(args.input, args.out), ensure_ascii=False))
 
 
 if __name__ == '__main__':

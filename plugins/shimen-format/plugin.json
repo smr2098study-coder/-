@@ -1,7 +1,7 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "shimen-format",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "按师门规范生成与检查 Word 和 PPT，处理字体、标题、表图及分页问题。",
   "extensions": {
     "com.openai": {

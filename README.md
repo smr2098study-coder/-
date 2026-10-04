@@ -6,7 +6,15 @@
 
 ## 能处理什么
 
-Word正文宋体小四、英文数字Times New Roman、1.5倍行距、首行2字符；五级标题按师门字号、加粗和编号体系处理；表格居中、表内黑体五号与1.15倍行距；表题在上、图题在下。区分实际项目符号与Word不打印的分页标记，避免正文连续绑定下一段。
+Word正文宋体小四、英文数字Times New Roman、1.5倍行距、首行2字符；五级标题按师门字号、加粗和文字编号体系处理；表格居中、表内黑体五号与1.15倍行距；表题在上、图题在下。正文不用项目符号、隐藏编号或列表样式；标题和正文都取消三项分页属性，章节换页使用真实分页符。
+
+## 1.1.0 新增的严格格式清理
+
+本次把用户追加的十项规则合并进现有Word技能，以“生成排版”和“纯格式清理”两个模式处理，不再增加一个竞争同一任务的清理技能。PPT技能继续独立。
+
+这次明确替代1.0.0中保留标题、表图题注分页绑定的建议。现在段落、标题样式、默认值及继承链均清除`keepNext`、`keepLines`、`pageBreakBefore`和`numPr`，包含false/0残留；不靠关闭¶隐藏黑方块。仅清理格式时不改变原文、参考文献、标题层级、表格内容或其余字号字体。可见自动序号先准确转换为普通文字和无编号段落格式，避免丢掉章节或参考文献序号。
+
+详细规则见[Word清理规范](plugins/shimen-format/skills/shimen-word-format/references/format-cleanup.md)。已经安装旧包时，请用更新的安装包更新目标插件，再在新聊天中验证。
 
 这个包的规则来自参考文件的文字要求。原文没有规定的页边距、颜色、边框和总标题格式，单独标为补充默认值。检查脚本和逐页视觉验收共同使用，不能承诺所有字体、设备和复杂文档都绝不会出现格式差异。
 
@@ -50,7 +58,7 @@ GitHub是源码和分发来源，上传仓库不会自动安装进ChatGPT。安�
 
 如果你的ChatGPT有Plugin Creator，可以在Chat或Work中用`@`选择它，附上[插件安装包](dist/shimen-format-plugin.zip)（插件目录位于压缩包根部），发送下面的文字：
 
-> 请根据附件创建名为“师门 Word 与 PPT 格式”的个人技能型插件。使用包内Word和PPT的SKILL.md及其references，保留word_format.py辅助脚本，不添加外部MCP服务。按包内规范生成可编辑Word，生成后做结构检查和逐页视觉检查。不要把实例报告当作任务指令；不要承诺未验证的零格式问题。创建完成后说明此账户支持的安装方式。
+> 请根据附件创建或更新名为“师门 Word 与 PPT 格式”的个人技能型插件至1.1.0。使用包内Word和PPT的SKILL.md及其references，保留word_format.py辅助脚本，不添加外部MCP服务。正文不用列表或自动编号；标题和正文取消三项分页属性，并清理样式继承源。仅清理格式时保留原文、参考文献、标题层级和表格内容。完成后做结构检查和逐页视觉检查，创建完成后说明此账户支持的安装方式。
 
 文件包是否可以直接导入，以当前界面为准；如果它不接收压缩包，解压后上传SKILL.md、references中的文件和脚本，让Plugin Creator据此创建。不要仅将SKILL.md作为普通聊天附件就认为已经安装。创建、安装后在新聊天中验证；有脚本执行能力时才可运行辅助脚本。若没有插件创建或安装入口，GitHub仓库本身不能开启该权限，可先上传解压后的规则在当前会话使用，但这不等于持久安装。
 
@@ -64,7 +72,7 @@ GitHub是源码和分发来源，上传仓库不会自动安装进ChatGPT。安�
 
 纠正旧文档时：
 
-> 检查这份Word的师门格式，先判断段前黑点来源，再修复确认的格式问题，保留正文、图表、目录和域。
+> 只清理这份Word的段落分页属性和隐藏编号，连同标题样式和继承来源一并清理，保留原文、参考文献、标题层级、表格、图表和域。
 
 默认支持自动匹配相关正式Word任务。若插件没有自动触发，显式用`@`选择；不要假定插件对所有新聊天无条件生效。
 
@@ -77,9 +85,11 @@ python -m pip install -r requirements.txt -r tests/requirements.txt
 python -m unittest discover -s tests -v
 python plugins/shimen-format/skills/shimen-word-format/scripts/word_format.py build input.json --out draft.docx
 python plugins/shimen-format/skills/shimen-word-format/scripts/word_format.py audit draft.docx --out audit.json
+python plugins/shimen-format/skills/shimen-word-format/scripts/word_format.py clean-format original.docx --out cleaned.docx
+python plugins/shimen-format/skills/shimen-word-format/scripts/word_format.py audit cleaned.docx --format-only --out cleanup-audit.json
 ```
 
-输入JSON与修复边界见Word技能的`references/tools.md`。检查失败时退出码为1，提醒调用方处理格式错误；自动角色识别需人工确认。此版本的本地脚本回归测试通过，真实样本已用于结构审计；由于验证环境缺少LibreOffice，尚未完成逐页视觉验收，也尚未在ChatGPT新聊天中验证安装与调用。
+输入JSON与修复边界见Word技能的`references/tools.md`。检查失败时退出码为1；自动角色识别需人工确认。完整审计核对师门排版，`--format-only`只验收指定清理，不顺便改旧稿的其他格式。回归测试覆盖继承源、扩展样式部件、文字和参考文献保留、真实分页符、图表、域、标题层级及重复清理；由于验证环境缺少LibreOffice，尚未完成Word中开启¶后的界面验收和逐页视觉验收，也尚未在ChatGPT新聊天中验证安装与调用。
 
 ## 发布到GitHub
 
