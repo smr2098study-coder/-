@@ -83,14 +83,14 @@ python plugins/shimen-format/skills/shimen-word-format/scripts/word_format.py au
 
 ## 发布到GitHub
 
-本次使用用户创建的公开仓库`smr2098study-coder/-`。以下命令适用于在本地继续维护该仓库；已有Git仓库时跳过初始化，已有origin时核对其地址。不要上传单独提供的0930诊断文件或源报告。
+本次使用用户创建的公开仓库`smr2098study-coder/-`。在一个新的目录中克隆后继续维护，已有该仓库的克隆时跳过克隆步骤。不要上传单独提供的0930诊断文件或源报告。
 
 ```text
-git init -b main
+git clone https://github.com/smr2098study-coder/-.git shimen-format-skills
+cd shimen-format-skills
 git add .
-git commit -m "Add Shimen document formatting skills"
-git remote add origin https://github.com/smr2098study-coder/-.git
-git push -u origin main
+git commit -m "Update Shimen document formatting skills"
+git push
 ```
 
 本包未指定开源许可证；可以按自己的分享意图另行选择许可证。GitHub源码可用不代表插件已被导入、安装或收录到公共Plugins目录；安装后仍需在目标ChatGPT账户的新聊天中验证。
