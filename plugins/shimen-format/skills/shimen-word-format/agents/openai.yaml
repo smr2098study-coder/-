@@ -1,6 +1,6 @@
 interface:
   display_name: "师门 Word 格式"
-  short_description: "按师门规范生成 Word，并保留原文清理黑方块、分页属性和隐藏编号"
-  default_prompt: "请使用 $shimen-word-format 按师门规范处理 Word；清理标题及正文的分页和列表属性，保留内容及标题层级。"
+  short_description: "师门 Word 排版与格式清理，支持脚注协作版和尾注去重交叉引用版"
+  default_prompt: "请使用 $shimen-word-format 按师门规范处理 Word，并严格按我指定的模式A或模式B处理引用及完成验收。"
 policy:
   allow_implicit_invocation: true

@@ -5,7 +5,7 @@ from pathlib import Path
 import tempfile
 import unittest
 from copy import deepcopy
-from zipfile import ZipFile
+from zipfile import ZipFile, ZIP_DEFLATED
 from lxml import etree as E
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -175,6 +175,87 @@ class WordFormatTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, '不能在纯格式清理时擅自删字'):
             fmt.clean_format(source, target)
         self.assertFalse(target.exists())
+
+    def test_cleanup_preserves_native_notes_noteref_bookmarks_and_note_settings(self):
+        from docx import Document
+        from docx.oxml import OxmlElement
+        doc = Document()
+        doc.styles['Normal'].paragraph_format.keep_with_next = True
+        p = doc.add_paragraph('原文与真实脚注')
+        foot = OxmlElement('w:footnoteReference')
+        foot.set(fmt.tag('id'), '2')
+        p.add_run()._r.append(foot)
+        p = doc.add_paragraph('首次尾注引用')
+        start = OxmlElement('w:bookmarkStart')
+        start.set(fmt.tag('id'), '42')
+        start.set(fmt.tag('name'), 'sm_ref_0001')
+        p._p.append(start)
+        endnote = OxmlElement('w:endnoteReference')
+        endnote.set(fmt.tag('id'), '2')
+        p.add_run()._r.append(endnote)
+        end = OxmlElement('w:bookmarkEnd')
+        end.set(fmt.tag('id'), '42')
+        p._p.append(end)
+        p = doc.add_paragraph('重复引用')
+        for kind, value in [('fldChar', 'begin'), ('instrText', ' NOTEREF sm_'),
+                            ('instrText', 'ref_0001 '), ('fldChar', 'separate'),
+                            ('t', '1'), ('fldChar', 'end')]:
+            child = OxmlElement('w:' + kind)
+            if kind == 'fldChar':
+                child.set(fmt.tag('fldCharType'), value)
+            else:
+                child.text = value
+            p.add_run()._r.append(child)
+        source, target = self.path / 'native-notes.docx', self.path / 'clean-notes.docx'
+        doc.save(source)
+        with ZipFile(source) as z:
+            parts = {name: z.read(name) for name in z.namelist()}
+        ct = E.fromstring(parts['[Content_Types].xml'])
+        rel = E.fromstring(parts['word/_rels/document.xml.rels'])
+        for kind in ('footnote', 'endnote'):
+            root = E.Element(fmt.tag(kind + 's'), nsmap={'w': fmt.W})
+            for note_id, note_type in [('-1', 'separator'), ('0', 'continuationSeparator'), ('2', None)]:
+                note = E.SubElement(root, fmt.tag(kind))
+                note.set(fmt.tag('id'), note_id)
+                if note_type:
+                    note.set(fmt.tag('type'), note_type)
+                paragraph = E.SubElement(note, fmt.tag('p'))
+                if note_type is None:
+                    pp = E.SubElement(paragraph, fmt.tag('pPr'))
+                    fmt.sub(pp, 'keepNext', val='1')
+                    fmt.sub(pp, 'ind', left='420', hanging='420')
+                    run = E.SubElement(paragraph, fmt.tag('r'))
+                    E.SubElement(run, fmt.tag(kind + 'Ref'))
+                    E.SubElement(run, fmt.tag('tab'))
+                    E.SubElement(run, fmt.tag('t')).text = '示例文献及原有说明'
+            parts['word/' + kind + 's.xml'] = E.tostring(root)
+            E.SubElement(ct, '{http://schemas.openxmlformats.org/package/2006/content-types}Override',
+                         PartName='/word/' + kind + 's.xml',
+                         ContentType='application/vnd.openxmlformats-officedocument.wordprocessingml.' + kind + 's+xml')
+            E.SubElement(rel, '{http://schemas.openxmlformats.org/package/2006/relationships}Relationship',
+                         Id='rIdFixture' + kind, Target=kind + 's.xml',
+                         Type='http://schemas.openxmlformats.org/officeDocument/2006/relationships/' + kind + 's')
+        settings = E.fromstring(parts['word/settings.xml'])
+        edn = fmt.sub(settings, 'endnotePr')
+        fmt.sub(edn, 'pos', val='sectEnd')
+        fmt.sub(edn, 'numFmt', val='decimal')
+        fmt.sub(edn, 'numRestart', val='continuous')
+        parts['word/settings.xml'] = E.tostring(settings)
+        parts['[Content_Types].xml'] = E.tostring(ct)
+        parts['word/_rels/document.xml.rels'] = E.tostring(rel)
+        with ZipFile(source, 'w', ZIP_DEFLATED) as z:
+            for name, data in parts.items():
+                z.writestr(name, data)
+        fmt.clean_format(source, target)
+        after = fmt.Package(target)
+        for part in ('word/document.xml', 'word/footnotes.xml', 'word/endnotes.xml'):
+            expected = E.fromstring(parts[part])
+            fmt.strip_control_properties(expected)
+            actual = E.fromstring(after.parts[part])
+            self.assertEqual(E.tostring(expected), E.tostring(actual), part)
+        for part in ('word/settings.xml', 'word/_rels/document.xml.rels', '[Content_Types].xml'):
+            self.assertEqual(parts[part], after.parts[part], part)
+        self.assertEqual(fmt.audit(target, True)['errors'], 0)
 
 
 if __name__ == '__main__':
