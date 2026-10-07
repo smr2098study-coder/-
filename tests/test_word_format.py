@@ -188,7 +188,7 @@ class WordFormatTests(unittest.TestCase):
         p = doc.add_paragraph('首次尾注引用')
         start = OxmlElement('w:bookmarkStart')
         start.set(fmt.tag('id'), '42')
-        start.set(fmt.tag('name'), 'sm_ref_0001')
+        start.set(fmt.tag('name'), '_RefCite_A7F32C')
         p._p.append(start)
         endnote = OxmlElement('w:endnoteReference')
         endnote.set(fmt.tag('id'), '2')
@@ -197,8 +197,8 @@ class WordFormatTests(unittest.TestCase):
         end.set(fmt.tag('id'), '42')
         p._p.append(end)
         p = doc.add_paragraph('重复引用')
-        for kind, value in [('fldChar', 'begin'), ('instrText', ' NOTEREF sm_'),
-                            ('instrText', 'ref_0001 '), ('fldChar', 'separate'),
+        for kind, value in [('fldChar', 'begin'), ('instrText', ' NOTEREF _RefCite_'),
+                            ('instrText', 'A7F32C \\h '), ('fldChar', 'separate'),
                             ('t', '1'), ('fldChar', 'end')]:
             child = OxmlElement('w:' + kind)
             if kind == 'fldChar':

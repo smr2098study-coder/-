@@ -29,13 +29,25 @@
 7. **分隔线。** 清理可见尾注separator及continuation separator横线，以及造成同类横线的段落边框；保留合法的separator/continuationSeparator特殊记录、合法ID及所需段落。区分特殊尾注记录与其中绘制横线的标记，不整块删除特殊记录或将其作为普通文献。Word重开后核实横线没有被恢复。
 8. **执行安全去重。** 按下面的身份规则形成确认的文献等价组和待确认候选，不用题名模糊相似度代替文献身份判断。
 9. **每篇唯一文献仅一个真实Endnote。** 按正文首次出现顺序选定组内首次引用及保留的尾注。只移除确证重复的文献尾注，不丢失独有评注、页码说明或原始文献信息；混有独有说明无法无损迁移时先列待处理项，不能直接丢弃。
-10. **首次位置保留原生引用。** 每篇文献第一次出现的位置有真实 `w:endnoteReference`，关联唯一普通Endnote。为首次尾注引用建立唯一、合法、稳定的书签；不把首次位置也改成纯文本或只有域的引用。
-11. **后续重复位置建立交叉引用。** 每个后续引用使用Word原生交叉引用，优先NOTEREF，指向首次真实尾注的书签。例如域指令 `{ NOTEREF sm_ref_0001 }`；这里的大括号必须是Word域结构，不是键入的文字。可用真实复合域或合法简单域，保存完整指令、书签目标及更新后的结果。普通超链接和硬编码上标数字不等价于此要求。
+10. **首次位置保留原生引用。** 每篇文献第一次出现的位置有真实 `w:endnoteReference`，关联唯一普通Endnote。其 `w:id` 是内部note ID，绝不能当作最终显示编号。把该原生引用包在唯一、合法、稳定的书签中；书签身份不得来自当前显示编号，禁止永久使用`ref_1`、`ref_2`、`ref_3`。使用 `_RefCite_A7F32C`、`_RefCite_000001`、基于已确认标识的稳定ID或Word生成的稳定名称。方括号与动态编号整体上标，但方括号不能把动态编号替换为静态字符串。
+11. **后续重复位置建立动态交叉引用。** 每个后续引用必须使用Word原生NOTEREF复合域并指向首次真实尾注引用的稳定书签。完整结构必须包含 `fldChar begin`、可跨run拼接且含 `NOTEREF <stable-bookmark> \\h` 的`instrText`、`fldChar separate`、非空field result、`fldChar end`；`\\h`提供原生点击跳转。REF、普通internal hyperlink、只有缓存结果、简单静态`[1]`或把更新结果再次flatten成普通文字均不合格。大括号必须是Word域结构，不是键入的字符。
 12. **合并同处多篇显示。** 同一处多篇显示为`[3,4]`，保留每篇文献的真实锚点或交叉引用关系；不能只保留一个链接代表整个组。
 13. **压缩连续显示。** 确实连续的一组显示为`[6-9]`，非连续组如3、4、6不能伪装为`[3-6]`。显示压缩与引用关系分开管理；记录完整成员及首次/重复状态，不能为了短写而删除7、8的首次真实引用、尾注或交叉引用关系。实现必须能被Microsoft Word保存重开保留；若尚不能同时满足压缩显示与原生引用关系，B仍未完成，不以断链或丢引用换取外观正确。
-14. **更新所有Word域。** 在Microsoft Word中更新正文、尾注、页眉页脚、文本框等适用story中的全部域。不能以只执行正文Ctrl+A/F9、仅写 `updateFields=true`、标记dirty或填写缓存值声称全部更新完成。记录实际采用的更新方式和结果；不随意解除与本任务无关的保护或更改外部链接。
-15. **检查broken NOTEREF。** 逐个解析所有NOTEREF指令及目标，覆盖跨多个run拆开的复合域和简单域。确认书签存在、成对、唯一，包围/定位有效的首次尾注引用；原生引用有对应真实尾注，交叉引用显示正确序号。搜索并排除“Error! Reference source not found.”、“错误！未找到引用源。”等错误结果，不能只凭没有错误文字就断言关系正确。
-16. **Word保存重开。** 在Microsoft Word保存DOCX，关闭本次测试文档，再重新打开同一保存文件；核对首次引用、重复引用、跨节引用、多篇/连续引用、尾注数量、序号和separator。必须同时检查重开后的原生关系和可见结果，确保尾注未变回普通文本、交叉引用没有失效、域更新不使压缩簇错误。必要时再次保存并检查最终文件。此项不能用LibreOffice、PDF、XML静态检查或假造日志替代。
+14. **更新所有Word域。** 在Microsoft Word中调用原生域更新，覆盖正文、所有StoryRanges、尾注、页眉页脚以及Shapes/TextFrames等适用范围。不能以只执行正文Ctrl+A/F9、仅写 `updateFields=true`、标记dirty或填写缓存值声称全部更新完成。记录实际采用的更新方式和结果；不随意解除与本任务无关的保护或更新未授权外部数据连接。
+15. **分别检查导航与动态域。** `navigation_ok`与`dynamic_field_ok`是两个独立结论。逐个解析NOTEREF，覆盖跨多个run拆开的复合域，确认begin、完整指令、稳定书签、separate、非空result和end全部存在；书签成对、唯一并包围/定位有效的首次 `w:endnoteReference`。原生引用有对应真实Endnote，NOTEREF数量等于已去重的后续重复引用数，`broken_noteref_count = 0`。搜索“Error! Reference source not found.”、“错误！未找到引用源。”等结果，但不能只凭没有错误文字断言关系正确。
+16. **Word动态重编号与重开验收。** 先更新并保存正式输出，关闭后重开核对；再对测试副本在原第一条真实Endnote之前插入新的真实Endnote，更新全部域。若原来A=[1]、B=[2]且后文NOTEREF再次引用A，插入C后必须同步成为C=[1]、A=[2]、B=[3]，所有A的NOTEREF结果从[1]变为[2]；删除前置测试文献后也应重新编号。保存测试副本、关闭、重开后结果仍须一致。此项不能用LibreOffice、PDF、静态OOXML或可点击超链接替代；无法执行时设置`word_field_update_validation = not_tested`，模式B只能标记待Word验收。
+
+### Mode B结构硬门槛
+
+Mode B必须同时满足：`TRUE ENDNOTE + STABLE BOOKMARK + NOTEREF FIELD + CLICKABLE + F9 UPDATEABLE`。具体静态结构至少包括：
+
+- `word/endnotes.xml`存在；每篇唯一文献有一个普通 `w:endnote`，内部用真实`w:endnoteRef`动态编号。
+- `[Content_Types].xml`、`word/_rels/document.xml.rels`、styles、settings及合法separator结构完整。
+- 正文首次引用是 `w:endnoteReference`，而非静态数字；书签包围该原生引用且名称与显示序号无关。
+- 每个重复引用都是含begin/instrText/separate/result/end的NOTEREF复合域，指令包含稳定书签和`\\h`。
+- 文末`[`、动态`w:endnoteRef`、`]`为baseline，随后是真正`w:tab`及文献正文；不能把`[1]`整体写为静态文字。
+
+以下任一情况直接判定Mode B失败：静态`[1]`加hyperlink、静态`[1]`加bookmark、普通正文参考文献列表加bookmark、只有clickable link、显示了REF/NOTEREF结果却没有真实field code、更新后把域flatten成普通文字、缺少`word/endnotes.xml`。internal hyperlink可以用于其他合法文档导航，但不能承担Mode B的引用编号身份。
 
 ## B的去重安全规则
 
@@ -69,12 +81,31 @@
 
 - **A完成**：本次引用位置均为独立真实脚注；重复文献未去重；没有用于替代本次引用的NOTEREF/尾注；脚注关系有效，交付真正Word脚注DOCX。
 - **B待身份确认**：已处理可确认组，尚有需要用户决定的duplicate candidates；输出候选清单及明确待确认的工作副本，不称最终版。
-- **B待Word验收**：结构处理完成或部分完成，但未实际完成Microsoft Word全部域更新、保存关闭重开；报告缺失步骤，不把工作副本命名或描述为B完成版。
+- **B待Word验收**：静态结构已通过，但`word_field_update_validation = not_tested`，或未完成动态插入/删除重编号、全部域更新、保存关闭重开；报告缺失步骤，不把工作副本命名或描述为B完成版。
 - **B完成**：所有可确认的重复文献已合并，所有候选已获确认并处理；首次位置为真实尾注引用，后续重复均为有效原生交叉引用；每篇唯一文献只保留一条真实Endnote；全部16项通过，包括实际Word重开。
 
-交付摘要记录原脚注数、原有尾注数、引用位置数、唯一文献数、确认合并数、未决候选数、重复位置交叉引用数、broken NOTEREF数以及Word保存重开是否通过。保留实测证据，不填写推测的“通过”。数量只能作为辅助证据，还须检查引用关系和显示正确。
+交付摘要记录原脚注数、原有尾注数、引用位置数、唯一文献数、确认合并数、未决候选数、重复位置交叉引用数、真实尾注引用数、citation hyperlink数、broken NOTEREF数、`navigation_ok`、`dynamic_field_ok`、`word_field_update_validation`、动态插入/删除测试及Word保存重开结果。保留实测证据，不填写推测的“通过”。数量只是辅助证据，还须检查原生关系及动态显示。
 
-代表性验收用例：同一文献引用三次时A有三个独立脚注，B有一个真实尾注和两个有效交叉引用；同题名不同DOI不自动合并；同NCT但不同论文身份进入候选；跨节首次/重复引用连续编号且指向正确；引用簇3、4和6至9分别显示`[3,4]`、`[6-9]`且成员关系完整；删除或改名书签的样本必须被检出，更新域及重开不能掩盖断链。
+代表性验收用例：同一文献引用三次时A有三个独立脚注，B有一个真实尾注和两个有效NOTEREF；同题名不同DOI不自动合并；同NCT但不同论文身份进入候选；跨节首次/重复引用连续编号且指向正确；引用簇3、4和6至9分别显示`[3,4]`、`[6-9]`且成员关系完整；删除/改名书签、移除separate、缺失endnotes.xml、把域转静态文字及静态超链接方案都必须被检出。动态测试在A、B之前插入C后，A的所有重复引用必须由1更新为2，保存重开仍正确。
+
+## 引用审计工具
+
+先做不启动Word的结构审计：
+
+```text
+python scripts/citation_audit.py input.docx --mode B --static-only --out static-audit.json
+```
+
+结构通过只能得到`pending_word_validation`。在Windows且已安装Microsoft Word时，用工作副本完成真正Word验收：
+
+```text
+powershell -ExecutionPolicy Bypass -File scripts/word_mode_b_validate.ps1 `
+  -InputDocx input.docx -OutputDocx validated.docx -ReportJson word-validation.json
+python scripts/citation_audit.py validated.docx --mode B `
+  --word-validation-report word-validation.json --out final-audit.json
+```
+
+PowerShell脚本保存的是新的`validated.docx`，不覆盖输入；它更新各story域、保存关闭重开，并在临时副本前置插入真实Endnote检查原有尾注和NOTEREF同步加1。最终citation audit只有在静态结构、Word动态测试与重开均通过时才给出`status=passed`及`dynamic_field_ok=true`。若Word不可用，不伪造报告，保留`not_tested`。
 
 ## 原生结构参考
 

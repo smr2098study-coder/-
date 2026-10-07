@@ -21,7 +21,7 @@ description: 按师门规范生成、清理和检查中文 Word，支持模式A�
 进入任一引用模式必须完整读取 [引用模式与验收](references/citation-modes.md)。
 
 - **A**：每次引用独立插入真正 Footnote；允许同一文献重复脚注；不去重、不建立 NOTEREF、不转尾注。用于协作、修改、合并和来源核查，不能用手打上标加页底文本代替。
-- **B**：所有真正 Footnote 转成真正 Endnote；阿拉伯数字连续编号、节尾显示；正文上标`[1]`，尾注区baseline`[1] + Tab + 文献正文`及悬挂缩进；清理可见分隔线但保留合法separator特殊节点。对确证重复文献去重，每篇唯一文献只保留一条真实Endnote；首次位置保留 `w:endnoteReference`，后续引用优先用NOTEREF指向首次尾注。一处多篇为`[3,4]`，连续引用为`[6-9]`。必须更新全部Word域、排除broken NOTEREF，保存、关闭、重新打开Microsoft Word后验证关系正确。只转换尾注不构成B完成。
+- **B**：所有真正 Footnote 转成真正 Endnote；阿拉伯数字连续编号、节尾显示；正文上标`[1]`，尾注区baseline`[1] + Tab + 文献正文`及悬挂缩进；清理可见分隔线但保留合法separator特殊节点。对确证重复文献去重，每篇唯一文献只保留一条真实Endnote；首次位置保留被稳定书签包围的 `w:endnoteReference`，后续引用必须用含 `begin → instrText NOTEREF … \\h → separate → result → end` 的真实复合域。显示编号只由Word尾注系统和域动态计算，不能进入永久书签身份。一处多篇为`[3,4]`，连续引用为`[6-9]`。必须通过新增前置真实尾注后的动态重编号回归测试，更新全部Word域、排除broken NOTEREF，保存、关闭、重新打开Microsoft Word后验证关系正确。静态文字、书签或internal hyperlink能点击不构成B完成。
 - **B的身份确认**：按DOI、PMID、NCT、ISBN/其他唯一标识、标准化完整参考文献字符串完全一致的优先次序核对，不根据题名/作者/年份/模糊相似度猜测合并。身份冲突或仅相似的条目输出`duplicate candidates`，用户确认后继续完成，不能当作去重已完成。
 
 允许完成可确认部分并保留工作副本；候选尚未解决或缺少Word更新域、保存重开证据时，标记“模式B待确认/待Word验收”，不交付为已完成的最终版。纯格式清理不自动切换模式；用户明确要求模式B时，仅对实现该模式所必需的引用结构、重复条目和引用格式做变更，不改正文论述与文献信息。
@@ -60,6 +60,6 @@ description: 按师门规范生成、清理和检查中文 Word，支持模式A�
 
 再使用环境中的 Word、LibreOffice 或可信 DOCX 渲染器生成 PDF/逐页图像，检查所有页：标题孤行、大片空白、表格溢出、缺字、题注错位、图像变形、页眉页脚和目录页码。渲染后有调整必须重新检查。若无法渲染，保留结果但明确“已完成结构检查，尚未完成逐页视觉验收”；不要保证完全无需人工调整。
 
-引用模式另按引用专用验收逐项检查。模式B必须使用Microsoft Word实际更新全部域并保存、关闭、重开；LibreOffice渲染、XML检查、缓存域结果或 `updateFields=true` 均不能替代这一步。说明本次完成的验证以及未完成的项目，不把本技能文档更新说成某份DOCX已完成模式B实测。
+引用模式另按引用专用验收逐项检查。先运行 `scripts/citation_audit.py` 检查真实note、稳定书签、NOTEREF复合域和退化超链接；再用 `scripts/word_mode_b_validate.ps1` 在Microsoft Word更新全部story域并执行动态插入回归、保存、关闭、重开，最后把Word报告传回citation audit。LibreOffice渲染、XML检查、缓存域结果或 `updateFields=true` 均不能替代这一步。若无法运行Microsoft Word，必须记录 `word_field_update_validation = not_tested`，不把文档标记为模式B成功。
 
 新写成稿不得残留无意的 `#`、`**`、聊天式分隔线、占位符和写作指导标签。仅清理既有文档时保留这些文字，不擅自改内容。只交付请求的文档；详细诊断与预览按用户需要提供。

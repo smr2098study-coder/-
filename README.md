@@ -4,6 +4,12 @@
 
 源码仓库：[smr2098study-coder/-](https://github.com/smr2098study-coder/-)。
 
+## 1.3.0 Mode B动态引用修复
+
+Mode B不再接受“静态`[1]` + bookmark/internal hyperlink”的可点击伪交叉引用。首次引用必须是真实`w:endnoteReference`，由与显示编号无关的稳定书签包围；重复引用必须是包含begin、NOTEREF指令、separate、非空result和end的真实Word复合域，并带`\\h`支持原生跳转。文末必须有`word/endnotes.xml`及动态`w:endnoteRef`，不能用普通参考文献列表代替。
+
+新增[citation_audit.py](plugins/shimen-format/skills/shimen-word-format/scripts/citation_audit.py)检测退化超链接、缺失endnotes部件、显示编号书签、broken NOTEREF和真实域结构；新增[Word COM验收脚本](plugins/shimen-format/skills/shimen-word-format/scripts/word_mode_b_validate.ps1)，在新输出文件上更新各story域、保存关闭重开，并在临时副本前置插入真实尾注，验证原生尾注和NOTEREF同步重新编号。没有Word原生验证时固定报告`word_field_update_validation = not_tested`，不能宣告Mode B完成。
+
 ## 1.2.0 引用模式
 
 引用流程补充在现有Word技能中，保留两种固定模式，PPT技能继续独立。
@@ -71,7 +77,7 @@ GitHub是源码和分发来源，上传仓库不会自动安装进ChatGPT。安�
 
 如果你的ChatGPT有Plugin Creator，可以在Chat或Work中用`@`选择它，附上[插件安装包](dist/shimen-format-plugin.zip)（插件目录位于压缩包根部），发送下面的文字：
 
-> 请根据附件创建或更新名为“师门 Word 与 PPT 格式”的个人技能型插件至1.2.0。使用包内Word和PPT的SKILL.md及其references，保留word_format.py辅助脚本。按固定模式A生成独立真实脚注协作版，按固定模式B完成真实尾注、安全去重、NOTEREF交叉引用和最终格式；B须在Word更新所有域并保存重开验收。格式清理不能破坏真实脚注、尾注和交叉引用，也不能改写原文。创建完成后说明此账户支持的安装方式。
+> 请根据附件创建或更新名为“师门 Word 与 PPT 格式”的个人技能型插件至1.3.0。保留包内全部脚本及reference。模式A生成独立真实脚注。模式B必须使用真实Endnote、与显示编号无关的稳定书签和NOTEREF复合域；禁止静态编号加超链接。运行citation audit与Word动态插入重编号、全部域更新、保存关闭重开验收，没有Word验证时标记not_tested。格式清理不能破坏原生引用，也不能改写原文。
 
 文件包是否可以直接导入，以当前界面为准；如果它不接收压缩包，解压后上传SKILL.md、references中的文件和脚本，让Plugin Creator据此创建。不要仅将SKILL.md作为普通聊天附件就认为已经安装。创建、安装后在新聊天中验证；有脚本执行能力时才可运行辅助脚本。若没有插件创建或安装入口，GitHub仓库本身不能开启该权限，可先上传解压后的规则在当前会话使用，但这不等于持久安装。
 
@@ -106,6 +112,7 @@ python plugins/shimen-format/skills/shimen-word-format/scripts/word_format.py bu
 python plugins/shimen-format/skills/shimen-word-format/scripts/word_format.py audit draft.docx --out audit.json
 python plugins/shimen-format/skills/shimen-word-format/scripts/word_format.py clean-format original.docx --out cleaned.docx
 python plugins/shimen-format/skills/shimen-word-format/scripts/word_format.py audit cleaned.docx --format-only --out cleanup-audit.json
+python plugins/shimen-format/skills/shimen-word-format/scripts/citation_audit.py mode-b.docx --mode B --static-only --out citation-static.json
 ```
 
 输入JSON与修复边界见Word技能的`references/tools.md`。检查失败时退出码为1；自动角色识别需人工确认。完整审计核对师门排版，`--format-only`只验收指定清理，不顺便改旧稿的其他格式。回归测试覆盖继承源、扩展样式部件、文字和参考文献保留、真实分页符、图表、域、标题层级及重复清理；由于验证环境缺少LibreOffice，尚未完成Word中开启¶后的界面验收和逐页视觉验收，也尚未在ChatGPT新聊天中验证安装与调用。
